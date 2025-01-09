@@ -182,3 +182,69 @@ public synchronized void decrease(Long id, Long quantity) {
 ### Pessimistic Lock 단점
 
 1. 별도의 Lock을 설정하므로 성능이 떨어질 수 있음.
+
+<br/>
+
+## 4. Optimistic Lock
+
+1. `Version` 컬럼 추가
+    ```java
+    @Entity
+    public class Stock {
+        @jakarta.persistence.Version
+        private Long version;
+    }
+    ```
+
+2. `Optimistic Lock`을 이용해 조회하는 쿼리 작성
+    ```java
+    public interface StockRepository extends JpaRepository<Stock, Long> {
+        /**
+         * Optimistic Lock 을 이용한 쿼리
+         */
+        @Lock(LockModeType.OPTIMISTIC)
+        @Query("SELECT s FROM Stock s WHERE s.id = :id")
+        Stock findByIdWithOptimisticLock(Long id);
+    }
+    ```
+
+3. `Version` 충돌이 발생할 경우, 다시 조회 후 업데이트하도록 동작하는 `Facade` 작성
+    ```java
+    @Component
+    public class OptimisticLockStockFacade {
+    
+        private final OptimisticLockStockService optimisticLockStockService;
+    
+        public OptimisticLockStockFacade(OptimisticLockStockService optimisticLockStockService) {
+            this.optimisticLockStockService = optimisticLockStockService;
+        }
+    
+        public void decrease(Long id, Long quantity) throws InterruptedException {
+            while (true) {
+                try {
+                    optimisticLockStockService.decrease(id, quantity);
+    
+                    // 정상적으로 업데이트가 되었다면 break
+                    break;
+                } catch (Exception e) {
+                    // Version이 달라 업데이트에 실패한 경우, 50ms 지연시간 후에 다시 조회 후 업데이트. 
+                    Thread.sleep(50);
+                }
+            }
+        }
+    }
+    ``` 
+
+4. `StockServiceTest.재고감소_동시요청3()` 테스트 실행
+
+<br/>
+
+### Optimistic Lock 단점
+
+1. 버전 충돌시 재시도 로직으로 인한 소요 시간 증가
+2. 버전 충돌시 재시도 로직을 개발자가 직접 작성하는 번거로움이 발생
+
+### Optimistic Lock 장점
+
+1. 별도의 `Lock`을 설정하지 않으므로, `Pessimistic Lock` 보다 성능이 좋음
+2. 충돌이 빈번하게 발생하지 않는다고 예상이 갈 경우에 적합.
