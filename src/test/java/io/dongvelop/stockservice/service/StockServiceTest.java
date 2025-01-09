@@ -1,6 +1,7 @@
 package io.dongvelop.stockservice.service;
 
 import io.dongvelop.stockservice.domain.Stock;
+import io.dongvelop.stockservice.facade.NamedLockStockFacade;
 import io.dongvelop.stockservice.facade.OptimisticLockStockFacade;
 import io.dongvelop.stockservice.repository.StockRepository;
 import org.assertj.core.api.Assertions;
@@ -28,6 +29,8 @@ class StockServiceTest {
     private PessimisticLockStockService pessimisticLockStockService;
     @Autowired
     private OptimisticLockStockFacade optimisticLockStockFacade;
+    @Autowired
+    private NamedLockStockFacade namedLockStockFacade;
 
     @BeforeEach
     public void beforeEach() {
@@ -139,6 +142,38 @@ class StockServiceTest {
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
+                } finally {
+                    countDownLatch.countDown();
+                }
+            });
+        }
+        countDownLatch.await();
+
+        // then
+        final Stock stock = stockRepository.findById(id).orElseThrow();
+        Assertions.assertThat(stock.getQuantity()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("[Named Lock]재고 감소 요청이 동시에 n건이 들어왔을 경우, 재고가 n만큼 감소해야 한다.")
+    void 재고감소_동시요청4() throws Exception {
+
+        /**
+         * 실제 조회 쿼리를 보면 아래와 같이 "for update" 구문이 들어감. = Pessimistic Lock
+         * Hibernate: select s1_0.id,s1_0.product_id,s1_0.quantity from stock s1_0 where s1_0.id=? for update
+         */
+
+        // given
+        final Long id = 1L;
+        final Long quantity = 1L;
+        final int threadCount = 100;
+        final ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+        final CountDownLatch countDownLatch = new CountDownLatch(threadCount);
+        // when
+        for (int i = 0; i < threadCount; i++) {
+            executorService.submit(() -> {
+                try {
+                    namedLockStockFacade.decrease(id, quantity);
                 } finally {
                     countDownLatch.countDown();
                 }

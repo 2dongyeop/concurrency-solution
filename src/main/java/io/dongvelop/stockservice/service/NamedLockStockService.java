@@ -7,16 +7,19 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class StockService {
+public class NamedLockStockService {
 
     private final StockRepository stockRepository;
 
-    public StockService(StockRepository stockRepository) {
+    public NamedLockStockService(StockRepository stockRepository) {
         this.stockRepository = stockRepository;
     }
 
-//    @Transactional
-    public synchronized void decrease(Long id, Long quantity) {
+    /**
+     * 부모의 트랜잭션과 별개로 실행
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void decrease(Long id, Long quantity) {
         // Stock 조회
         final Stock stock = stockRepository.findById(id).orElseThrow();
 

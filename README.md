@@ -20,6 +20,9 @@
     - [4. Optimistic Lock](#4-optimistic-lock)
         - [Optimistic Lock 장점](#optimistic-lock-장점)
         - [Optimistic Lock 단점](#optimistic-lock-단점)
+    - [5. Named Lock](#5-named-lock)
+        - [Named Lock 장점](#named-lock-장점)
+        - [Named Lock 단점](#named-lock-단점)
 
 <br/>
 
@@ -247,7 +250,89 @@ public synchronized void decrease(Long id, Long quantity) {
 1. 버전 충돌시 재시도 로직으로 인한 소요 시간 증가
 2. 버전 충돌시 재시도 로직을 개발자가 직접 작성하는 번거로움이 발생
 
+<br/>
+
 ### Optimistic Lock 장점
 
 1. 별도의 `Lock`을 설정하지 않으므로, `Pessimistic Lock` 보다 성능이 좋음
 2. 충돌이 빈번하게 발생하지 않는다고 예상이 갈 경우에 적합.
+
+<br/>
+
+## 5. Named Lock
+
+1. `Lock`을 관리하는 `Repository` 작성
+    ```java
+    /**
+     * 실무에서는 Stock Entity를 그대로 사용하지 말고, 별도의 jdbc를 사용하는 방식으로 분리를 권장.
+     * 같은 DataSource를 사용할 경우, 커넥션 풀이 부족해지는 현상으로 다른 서비스에 영향을 끼칠 수 있음.
+     */
+    public interface LockRepository extends JpaRepository<Stock, Long> {
+        /**
+         * MySQL에서 Lock을 획득하는 GET_LOCK
+         */
+        @Query(value = "SELECT GET_LOCK(:key, 3000)", nativeQuery = true)
+        void getLock(String key);
+    
+        /**
+         * MySQL에서 Lock을 해제하는 RELEASE_LOCK
+         */
+        @Query(value = "SELECT RELEASE_LOCK(:key)", nativeQuery = true)
+        void releaseLock(String key);
+    }
+    ```
+2. `Lock`을 얻고 해지하는 `Facade` 작성
+    ```java
+    @Component
+    public class NamedLockStockFacade {
+        private final NamedLockStockService namedLockStockService;
+        private final LockRepository lockRepository;
+    
+        public NamedLockStockFacade(NamedLockStockService namedLockStockService, LockRepository lockRepository) {
+            this.namedLockStockService = namedLockStockService;
+            this.lockRepository = lockRepository;
+        }
+    
+        public void decrease(Long id, Long quantity) {
+            try {
+                // Lock 획득
+                lockRepository.getLock(id.toString());
+    
+                namedLockStockService.decrease(id, quantity);
+            } finally {
+                // Lock 해지
+                lockRepository.releaseLock(id.toString());
+            }
+        }
+    }
+    ```
+3. 부모와 별도의 트랜잭션으로 동작하도록 `propagation` 설정 추가
+    ```java
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void decrease(Long id, Long quantity) {
+        // 기존과 동일 
+    }
+    ```
+4. Database Connection Pool 조정
+    ```yaml
+    spring:
+      datasource:
+        hikari:
+          maximum-pool-size: 40
+    ```
+
+5. `StockServiceTest.재고감소_동시요청4()` 테스트 실행
+
+<br/>
+
+### Named Lock 단점
+
+1. 트랜잭션 종료 시에 `Lock` 해지 및 세션 관리가 필요.
+2. 실제로 사용할 때에는 구현 방법이 복잡할 수 있음.
+
+<br/>
+
+### Named Lock 장점
+
+1. 주로 분산락을 구현할 때 사용
+2. 타임아웃을 구현하기 쉬움(`Pessimistic Lock`은 타임아웃을 구현하기 힘듬.)
