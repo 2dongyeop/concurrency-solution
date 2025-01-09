@@ -13,16 +13,16 @@
         - [Synchronized 내용 정리](#synchronized-내용-정리)
         - [Synchronized 문제점](#synchronized-문제점)
     - [2. DB Lock](#2-db-lock)
-        - [DB Lock 종류](#db-lock-종류)
-    - [3. Pessimistic Lock](#3-pessimistic-lock)
-        - [Pessimistic Lock 장점](#pessimistic-lock-장점)
-        - [Pessimistic Lock 단점](#pessimistic-lock-단점)
-    - [4. Optimistic Lock](#4-optimistic-lock)
-        - [Optimistic Lock 장점](#optimistic-lock-장점)
-        - [Optimistic Lock 단점](#optimistic-lock-단점)
-    - [5. Named Lock](#5-named-lock)
-        - [Named Lock 장점](#named-lock-장점)
-        - [Named Lock 단점](#named-lock-단점)
+        - [2-1. DB Lock 종류](#2-1-db-lock-종류)
+        - [2-2. Pessimistic Lock](#2-2-pessimistic-lock)
+            - [Pessimistic Lock 장점](#pessimistic-lock-장점)
+            - [Pessimistic Lock 단점](#pessimistic-lock-단점)
+        - [2-3. Optimistic Lock](#2-3-optimistic-lock)
+            - [Optimistic Lock 장점](#optimistic-lock-장점)
+            - [Optimistic Lock 단점](#optimistic-lock-단점)
+        - [2-4. Named Lock](#2-4-named-lock)
+            - [Named Lock 장점](#named-lock-장점)
+            - [Named Lock 단점](#named-lock-단점)
 
 <br/>
 
@@ -133,7 +133,7 @@ public synchronized void decrease(Long id, Long quantity) {
 
 ## 2. DB Lock
 
-### DB Lock 종류
+### 2-1. DB Lock 종류
 
 > Pessimistic Lock
 
@@ -159,7 +159,7 @@ public synchronized void decrease(Long id, Long quantity) {
 
 <br/>
 
-## 3. Pessimistic Lock
+## 2-2. Pessimistic Lock
 
 1. `Pessimistic Lock`을 이용해 조회하는 쿼리를 작성
     ```java
@@ -191,7 +191,7 @@ public synchronized void decrease(Long id, Long quantity) {
 
 <br/>
 
-## 4. Optimistic Lock
+## 2-3. Optimistic Lock
 
 1. `Version` 컬럼 추가
     ```java
@@ -259,7 +259,7 @@ public synchronized void decrease(Long id, Long quantity) {
 
 <br/>
 
-## 5. Named Lock
+## 2-4. Named Lock
 
 1. `Lock`을 관리하는 `Repository` 작성
     ```java
