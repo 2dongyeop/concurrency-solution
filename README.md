@@ -17,6 +17,9 @@
     - [3. Pessimistic Lock](#3-pessimistic-lock)
         - [Pessimistic Lock 장점](#pessimistic-lock-장점)
         - [Pessimistic Lock 단점](#pessimistic-lock-단점)
+    - [4. Optimistic Lock](#4-optimistic-lock)
+        - [Optimistic Lock 장점](#optimistic-lock-장점)
+        - [Optimistic Lock 단점](#optimistic-lock-단점)
 
 <br/>
 
