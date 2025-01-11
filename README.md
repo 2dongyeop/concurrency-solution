@@ -23,6 +23,14 @@
         - [2-4. Named Lock](#2-4-named-lock)
             - [Named Lock 장점](#named-lock-장점)
             - [Named Lock 단점](#named-lock-단점)
+    - [3. Redis Lock](#3-redis-lock)
+        - [Redis 환경 세팅](#redis-환경-세팅)
+        - [Lettuce Lock 구현](#lettuce-lock-구현)
+            - [Lettuce Lock 장점](#lettuce-lock-장점)
+            - [Lettuce Lock 단점](#lettuce-lock-단점)
+        - [Redisson Lock 구현](#redisson-lock-구현)
+            - [Redisson Lock 장점](#redisson-lock-장점)
+            - [Redisson Lock 단점](#redisson-lock-단점)
 
 <br/>
 
@@ -341,10 +349,6 @@ public synchronized void decrease(Long id, Long quantity) {
 
 ## 3. Redis Lock
 
-> Redisson
-
-- Pub/Sub 기반으로 Lock 구현 제공
-
 ### Redis 환경 세팅
 
 1. Docker Container 기동
@@ -454,3 +458,84 @@ public synchronized void decrease(Long id, Long quantity) {
 - 구현이 간단하다.
 - MySQL의 Named Lock과 비슷한 동작 방식
     - 세션 관리를 하지 않아도 된다는 이점
+
+<br/>
+
+### Redisson Lock 구현
+
+1. 의존성 추가
+    ```groovy
+    // https://mvnrepository.com/artifact/org.redisson/redisson-spring-boot-starter
+    implementation group: 'org.redisson', name: 'redisson-spring-boot-starter', version: '3.42.0'
+    ``` 
+
+2. Redis Pub/Sub 실습
+    ```shell
+    # Redis CLI 접속
+    docker exec -it ${CONTAINER ID} redis-cli
+    
+    # Subscribe --- 
+    127.0.0.1:6379> subscribe ch1
+    1) "subscribe"
+    2) "ch1"
+    3) (integer) 1
+    Reading messages... (press Ctrl-C to quit or any key to type command)
+    
+    # Publish ---
+    127.0.0.1:6379> publish ch1 hello
+    (integer) 1
+    ```
+
+3. RedissonLockStockFacade 작성
+    ```java
+    @Component
+    public class RedissonLockStockFacade {
+    
+        private final RedissonClient redissonClient;
+        private final StockService stockService;
+    
+        public RedissonLockStockFacade(RedissonClient redissonClient, StockService stockService) {
+            this.redissonClient = redissonClient;
+            this.stockService = stockService;
+        }
+    
+        public void decrease(Long id, Long quantity) throws InterruptedException {
+    
+            // Lock 객체 생성
+            final RLock lock = redissonClient.getLock(id.toString());
+    
+            try {
+                // 10번간 락을 얻기 위해 시도, 이후에 얻을 경우 1초간 점유
+                boolean available = lock.tryLock(10, 1, TimeUnit.SECONDS);
+    
+                // 락 획득 실패시
+                if (!available) {
+                    System.err.println("Lock 획득 실패");
+                }
+    
+                // 락 획득 성공시
+                stockService.decrease(id, quantity);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            } finally {
+                // 작업이 모두 끝나면 Lock 해제
+                lock.unlock();
+            }
+        }
+    }
+    ```
+
+4. `StockServiceTest.재고감소_동시요청6()` 테스트 실행
+
+<br/>
+
+### Redisson Lock 장점
+
+- Redis Pub/Sub 방식으로 동작하기 때문에, Lettuce 보다 부하가 덜 간다.
+- 락 획득 시도 기능 및 재시도를 기본적으로 제공
+
+### Redisson Lock 단점
+
+- 별도의 라이브러리를 사용해야 한다.
+
+<br/>

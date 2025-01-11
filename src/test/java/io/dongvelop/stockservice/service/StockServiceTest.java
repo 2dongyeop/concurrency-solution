@@ -4,6 +4,7 @@ import io.dongvelop.stockservice.domain.Stock;
 import io.dongvelop.stockservice.facade.LettuceLockStockFacade;
 import io.dongvelop.stockservice.facade.NamedLockStockFacade;
 import io.dongvelop.stockservice.facade.OptimisticLockStockFacade;
+import io.dongvelop.stockservice.facade.RedissonLockStockFacade;
 import io.dongvelop.stockservice.repository.StockRepository;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
@@ -34,6 +35,8 @@ class StockServiceTest {
     private NamedLockStockFacade namedLockStockFacade;
     @Autowired
     private LettuceLockStockFacade lettuceLockStockFacade;
+    @Autowired
+    private RedissonLockStockFacade redissonLockStockFacade;
 
     @BeforeEach
     public void beforeEach() {
@@ -197,6 +200,34 @@ class StockServiceTest {
                     lettuceLockStockFacade.decrease(id, quantity);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
+                } finally {
+                    countDownLatch.countDown();
+                }
+            });
+        }
+        countDownLatch.await();
+
+        // then
+        final Stock stock = stockRepository.findById(id).orElseThrow();
+        Assertions.assertThat(stock.getQuantity()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("[Redis Redisson Lock] 재고 감소 요청이 동시에 n건이 들어왔을 경우, 재고가 n만큼 감소해야 한다.")
+    void 재고감소_동시요청6() throws Exception {
+
+        // given
+        final Long id = 1L;
+        final Long quantity = 1L;
+        final int threadCount = 100;
+        final ExecutorService executorService = Executors.newFixedThreadPool(32);
+        final CountDownLatch countDownLatch = new CountDownLatch(threadCount);
+
+        // when
+        for (int i = 0; i < threadCount; i++) {
+            executorService.submit(() -> {
+                try {
+                    redissonLockStockFacade.decrease(id, quantity);
                 } finally {
                     countDownLatch.countDown();
                 }
