@@ -336,3 +336,121 @@ public synchronized void decrease(Long id, Long quantity) {
 
 1. 주로 분산락을 구현할 때 사용
 2. 타임아웃을 구현하기 쉬움(`Pessimistic Lock`은 타임아웃을 구현하기 힘듬.)
+
+<br/>
+
+## 3. Redis Lock
+
+> Redisson
+
+- Pub/Sub 기반으로 Lock 구현 제공
+
+### Redis 환경 세팅
+
+1. Docker Container 기동
+    ```shell
+    docker pull redis
+    docker run --name myredis -d -p 6379:6379 redis
+    ```
+
+2. Redis 의존성 추가
+    ```groovy
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    }
+    ```
+
+3. Redis CLI 동작 확인
+    ```shell
+    # Redis CLI 접속
+    docker exec -it ${CONTAINER ID} redis-cli
+    
+    # 값 삽입
+    127.0.0.1:6379> setnx 1 lock
+    (integer) 1    # 1개의 값이 들어감
+    
+    127.0.0.1:6379> setnx 1 lock
+    (integer) 0    # 0개의 값이 들어감 => 이미 존재하므로.
+    
+    # 값 삭제
+    127.0.0.1:6379> del 1
+    (integer) 1
+    ```
+
+<br/>
+
+### Lettuce Lock 구현
+
+> `setnx` 명령을 활용하여 분산락 구현
+> → `set if not exist` 줄임말로, 기존의 키-값이 없을 때에만 동작하는 방식
+
+1. RedisLockRepository 구현
+    ```java
+    @Component
+    public class RedisLockRepository {
+    
+        private final RedisTemplate<String, String> redisTemplate;
+    
+        public RedisLockRepository(RedisTemplate<String, String> redisTemplate) {
+            this.redisTemplate = redisTemplate;
+        }
+    
+        public Boolean lock(Long key) {
+            return redisTemplate.opsForValue()
+                    .setIfAbsent(generateKey(key), "lock", Duration.ofMillis(3_000));
+        }
+    
+        public Boolean unlock(Long key) {
+            return redisTemplate.delete(generateKey(key));
+        }
+    
+        private String generateKey(Long key) {
+            return key.toString();
+        }
+    }
+    ```
+
+2. LettuceLockStockFacade 작성
+    ```java
+    @Component
+    public class LettuceLockStockFacade {
+    
+        private final RedisLockRepository redisLockRepository;
+        private final StockService stockService;
+    
+        public LettuceLockStockFacade(RedisLockRepository redisLockRepository, StockService stockService) {
+            this.redisLockRepository = redisLockRepository;
+            this.stockService = stockService;
+        }
+    
+        public void decrease(Long id, Long quantity) throws InterruptedException {
+            // 락을 획득할 때까지 100ms Sleep. => Redis 부하 줄이기
+            while (!redisLockRepository.lock(id)) {
+                Thread.sleep(100);
+            }
+    
+            // 락 획득시
+            try {
+                stockService.decrease(id, quantity);
+            } finally {
+                redisLockRepository.unlock(id);
+            }
+        }
+    }
+    ```
+
+3. `StockServiceTest.재고감소_동시요청5()` 테스트 실행
+
+<br/>
+
+### Lettuce Lock 단점
+
+- Spin Lock 방식
+    - 개발자가 직접 Retry 로직을 작성해야 함
+    - 이 과정에서 Redis에 부하가 생길 수 있음.
+
+### Lettuce Lock 장점
+
+- 구현이 간단하다.
+- MySQL의 Named Lock과 비슷한 동작 방식
+    - 세션 관리를 하지 않아도 된다는 이점
